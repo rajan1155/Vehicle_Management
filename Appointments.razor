@@ -1,0 +1,247 @@
+@page "/appointments"
+
+@using System.Net.Http.Json
+@using VehicleParts.Client.Services
+@inject HttpClient Http
+@inject AuthState Auth
+
+<h3>Appointments</h3>
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert alert-info">@message</div>
+}
+
+<div class="card p-3 mb-4">
+    <h5>Book Appointment</h5>
+
+    @if (Auth.Role != "Customer")
+    {
+        <div class="mb-2">
+            <label>Customer</label>
+            <select class="form-control" @bind="appointment.CustomerId">
+                <option value="0">-- Select Customer --</option>
+                @foreach (var customer in customers)
+                {
+                    <option value="@customer.Id">@customer.User?.FullName (@customer.PhoneNumber)</option>
+                }
+            </select>
+        </div>
+    }
+    else
+    {
+        <p><strong>Customer:</strong> @Auth.FullName</p>
+    }
+
+    <div class="mb-2">
+        <label>Vehicle</label>
+        <select class="form-control" @bind="appointment.VehicleId">
+            <option value="0">-- Select Vehicle --</option>
+            @foreach (var vehicle in vehicles)
+            {
+                <option value="@vehicle.Id">
+                    @vehicle.VehicleNumber - @vehicle.Brand @vehicle.Model
+                </option>
+            }
+        </select>
+    </div>
+
+    <div class="mb-2">
+        <label>Service Type</label>
+        <input class="form-control" @bind="appointment.ServiceType" />
+    </div>
+
+    <div class="mb-2">
+        <label>Appointment Date</label>
+        <input class="form-control" type="datetime-local" @bind="appointment.AppointmentDate" />
+    </div>
+
+    <button class="btn btn-primary" @onclick="BookAppointment">
+        Book Appointment
+    </button>
+</div>
+
+<h5>Appointment List</h5>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Customer ID</th>
+            <th>Vehicle ID</th>
+            <th>Service</th>
+            <th>Date</th>
+            <th>Status</th>
+
+            @if (Auth.Role == "Admin" || Auth.Role == "Staff")
+            {
+                <th>Action</th>
+            }
+        </tr>
+    </thead>
+
+    <tbody>
+        @foreach (var item in appointments)
+        {
+            <tr>
+                <td>@item.Id</td>
+                <td>@item.CustomerId</td>
+                <td>@item.VehicleId</td>
+                <td>@item.ServiceType</td>
+                <td>@item.AppointmentDate</td>
+                <td>@item.Status</td>
+
+                @if (Auth.Role == "Admin" || Auth.Role == "Staff")
+                {
+                    <td>
+                        <button class="btn btn-success btn-sm me-1"
+                                @onclick='() => UpdateStatus(item.Id, "Approved")'>
+                            Approve
+                        </button>
+
+                        <button class="btn btn-danger btn-sm"
+                                @onclick='() => UpdateStatus(item.Id, "Rejected")'>
+                            Reject
+                        </button>
+                    </td>
+                }
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private string message = string.Empty;
+
+    private AppointmentCreateDto appointment = new()
+    {
+        AppointmentDate = DateTime.Now.AddDays(1)
+    };
+
+    private List<CustomerDto> customers = new();
+    private List<VehicleDto> vehicles = new();
+    private List<AppointmentDto> appointments = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        customers = await Http.GetFromJsonAsync<List<CustomerDto>>("api/customers") ?? new();
+
+        if (Auth.Role == "Customer")
+        {
+            appointment.CustomerId = Auth.CustomerId;
+
+            var currentCustomer = customers.FirstOrDefault(c => c.Id == Auth.CustomerId);
+            vehicles = currentCustomer?.Vehicles ?? new();
+
+            await ReloadAppointments();
+        }
+        else
+        {
+            vehicles = customers
+                .Where(c => c.Vehicles != null)
+                .SelectMany(c => c.Vehicles!)
+                .ToList();
+
+            await ReloadAppointments();
+        }
+    }
+
+    private async Task BookAppointment()
+    {
+        message = string.Empty;
+
+        if (Auth.Role == "Customer")
+            appointment.CustomerId = Auth.CustomerId;
+
+        if (appointment.CustomerId == 0 || appointment.VehicleId == 0)
+        {
+            message = "Please select customer and vehicle.";
+            return;
+        }
+
+        appointment.AppointmentDate = appointment.AppointmentDate.ToUniversalTime();
+
+        var response = await Http.PostAsJsonAsync("api/appointments", appointment);
+
+        if (response.IsSuccessStatusCode)
+        {
+            message = "Appointment booked successfully.";
+            await ReloadAppointments();
+
+            appointment = new AppointmentCreateDto
+            {
+                CustomerId = Auth.Role == "Customer" ? Auth.CustomerId : 0,
+                AppointmentDate = DateTime.Now.AddDays(1)
+            };
+        }
+        else
+        {
+            message = await response.Content.ReadAsStringAsync();
+        }
+    }
+
+    private async Task UpdateStatus(int id, string status)
+    {
+        var response = await Http.PutAsync(
+            $"api/appointments/{id}/status?status={status}",
+            null);
+
+        if (response.IsSuccessStatusCode)
+        {
+            message = $"Appointment {status.ToLower()} successfully.";
+            await ReloadAppointments();
+        }
+        else
+        {
+            message = await response.Content.ReadAsStringAsync();
+        }
+    }
+
+    private async Task ReloadAppointments()
+    {
+        var allAppointments = await Http.GetFromJsonAsync<List<AppointmentDto>>("api/appointments") ?? new();
+
+        appointments = Auth.Role == "Customer"
+            ? allAppointments.Where(a => a.CustomerId == Auth.CustomerId).ToList()
+            : allAppointments;
+    }
+
+    public class AppointmentCreateDto
+    {
+        public int CustomerId { get; set; }
+        public int VehicleId { get; set; }
+        public string ServiceType { get; set; } = string.Empty;
+        public DateTime AppointmentDate { get; set; }
+    }
+
+    public class AppointmentDto
+    {
+        public int Id { get; set; }
+        public int CustomerId { get; set; }
+        public int VehicleId { get; set; }
+        public string ServiceType { get; set; } = string.Empty;
+        public DateTime AppointmentDate { get; set; }
+        public string Status { get; set; } = string.Empty;
+    }
+
+    public class CustomerDto
+    {
+        public int Id { get; set; }
+        public UserDto? User { get; set; }
+        public string PhoneNumber { get; set; } = string.Empty;
+        public List<VehicleDto>? Vehicles { get; set; }
+    }
+
+    public class UserDto
+    {
+        public string FullName { get; set; } = string.Empty;
+    }
+
+    public class VehicleDto
+    {
+        public int Id { get; set; }
+        public string VehicleNumber { get; set; } = string.Empty;
+        public string Brand { get; set; } = string.Empty;
+        public string Model { get; set; } = string.Empty;
+    }
+}
