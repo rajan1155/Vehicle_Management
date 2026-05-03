@@ -1,0 +1,354 @@
+@page "/customers"
+
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<h3>Customer Management</h3>
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert alert-info">@message</div>
+}
+
+<div class="card p-3 mb-4">
+    <h5>Register Customer with Vehicle</h5>
+
+    <div class="mb-2">
+        <label>Full Name</label>
+        <input class="form-control" @bind="customer.User.FullName" />
+    </div>
+
+    <div class="mb-2">
+        <label>Email</label>
+        <input class="form-control" @bind="customer.User.Email" />
+    </div>
+
+    <div class="mb-2">
+        <label>Password</label>
+        <input class="form-control" @bind="customer.User.PasswordHash" />
+    </div>
+
+    <div class="mb-2">
+        <label>Phone Number</label>
+        <input class="form-control" @bind="customer.PhoneNumber" />
+    </div>
+
+    <div class="mb-2">
+        <label>Address</label>
+        <input class="form-control" @bind="customer.Address" />
+    </div>
+
+    <hr />
+
+    <h6>Vehicle Details</h6>
+
+    <div class="mb-2">
+        <label>Vehicle Number</label>
+        <input class="form-control" @bind="vehicle.VehicleNumber" />
+    </div>
+
+    <div class="mb-2">
+        <label>Brand</label>
+        <input class="form-control" @bind="vehicle.Brand" />
+    </div>
+
+    <div class="mb-2">
+        <label>Model</label>
+        <input class="form-control" @bind="vehicle.Model" />
+    </div>
+
+    <div class="mb-2">
+        <label>Year</label>
+        <input class="form-control" type="number" @bind="vehicle.Year" />
+    </div>
+
+    <button class="btn btn-primary" @onclick="CreateCustomer">
+        Register Customer
+    </button>
+</div>
+
+<div class="card p-3 mb-4">
+    <h5>Search Customer</h5>
+
+    <div class="input-group">
+        <input class="form-control"
+               placeholder="Search by name, phone, or vehicle number"
+               @bind="keyword" />
+
+        <button class="btn btn-secondary" @onclick="SearchCustomers">
+            Search
+        </button>
+
+        <button class="btn btn-outline-secondary" @onclick="LoadCustomers">
+            Reset
+        </button>
+    </div>
+</div>
+
+<h5>Customer List</h5>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Address</th>
+            <th>Vehicles</th>
+            <th>Credit</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        @foreach (var item in customers)
+        {
+            <tr>
+                <td>@item.Id</td>
+                <td>@item.User?.FullName</td>
+                <td>@item.PhoneNumber</td>
+                <td>@item.Address</td>
+                <td>
+                    @if (item.Vehicles != null)
+                    {
+                        @foreach (var v in item.Vehicles)
+                        {
+                            <div>@v.VehicleNumber - @v.Brand @v.Model (@v.Year)</div>
+                        }
+                    }
+                </td>
+                <td>Rs. @item.CreditBalance</td>
+                <td>
+                    <button class="btn btn-info btn-sm"
+                            @onclick="() => ViewHistory(item.Id)">
+                        View History
+                    </button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (selectedHistory != null)
+{
+    <div class="card p-3 mt-4">
+        <h5>Customer Details, Vehicle Info & Purchase History</h5>
+
+        <p><strong>Name:</strong> @selectedHistory.Customer.User?.FullName</p>
+        <p><strong>Phone:</strong> @selectedHistory.Customer.PhoneNumber</p>
+        <p><strong>Address:</strong> @selectedHistory.Customer.Address</p>
+        <p><strong>Credit Balance:</strong> Rs. @selectedHistory.Customer.CreditBalance</p>
+
+        <h6>Vehicle Information</h6>
+
+        @if (selectedHistory.Customer.Vehicles == null || selectedHistory.Customer.Vehicles.Count == 0)
+        {
+            <p>No vehicles found.</p>
+        }
+        else
+        {
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Vehicle Number</th>
+                        <th>Brand</th>
+                        <th>Model</th>
+                        <th>Year</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in selectedHistory.Customer.Vehicles)
+                    {
+                        <tr>
+                            <td>@v.VehicleNumber</td>
+                            <td>@v.Brand</td>
+                            <td>@v.Model</td>
+                            <td>@v.Year</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <h6>Invoice History</h6>
+
+        @if (selectedHistory.SalesHistory == null || selectedHistory.SalesHistory.Count == 0)
+        {
+            <div class="alert alert-warning">
+                No invoice history found.
+            </div>
+        }
+        else
+        {
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Invoice ID</th>
+                        <th>Date</th>
+                        <th>Subtotal</th>
+                        <th>Discount</th>
+                        <th>Grand Total</th>
+                        <th>Credit</th>
+                        <th>Paid</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var invoice in selectedHistory.SalesHistory)
+                    {
+                        <tr>
+                            <td>@invoice.Id</td>
+                            <td>@invoice.SaleDate</td>
+                            <td>Rs. @invoice.SubTotal</td>
+                            <td>Rs. @invoice.DiscountAmount</td>
+                            <td>Rs. @invoice.GrandTotal</td>
+                            <td>@invoice.IsCredit</td>
+                            <td>@invoice.IsPaid</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    private string message = string.Empty;
+    private string keyword = string.Empty;
+
+    private CustomerCreateDto customer = NewCustomer();
+    private VehicleDto vehicle = new();
+
+    private List<CustomerDto> customers = new();
+
+    private CustomerHistoryResponse? selectedHistory;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomers();
+    }
+
+    private async Task LoadCustomers()
+    {
+        customers = await Http.GetFromJsonAsync<List<CustomerDto>>("api/customers") ?? new();
+        keyword = string.Empty;
+        selectedHistory = null;
+    }
+
+    private async Task SearchCustomers()
+    {
+        selectedHistory = null;
+
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            await LoadCustomers();
+            return;
+        }
+
+        customers = await Http.GetFromJsonAsync<List<CustomerDto>>(
+            $"api/customers/search?keyword={keyword}"
+        ) ?? new();
+    }
+
+    private async Task CreateCustomer()
+    {
+        message = string.Empty;
+        selectedHistory = null;
+
+        if (string.IsNullOrWhiteSpace(customer.User.FullName) ||
+            string.IsNullOrWhiteSpace(customer.PhoneNumber))
+        {
+            message = "Customer name and phone number are required.";
+            return;
+        }
+
+        customer.Vehicles = new List<VehicleDto> { vehicle };
+
+        var response = await Http.PostAsJsonAsync("api/customers", customer);
+
+        if (response.IsSuccessStatusCode)
+        {
+            message = "Customer registered successfully.";
+            customer = NewCustomer();
+            vehicle = new VehicleDto();
+            await LoadCustomers();
+        }
+        else
+        {
+            message = await response.Content.ReadAsStringAsync();
+        }
+    }
+
+    private async Task ViewHistory(int customerId)
+    {
+        message = string.Empty;
+
+        selectedHistory = await Http.GetFromJsonAsync<CustomerHistoryResponse>(
+            $"api/customers/{customerId}/history"
+        );
+    }
+
+    private static CustomerCreateDto NewCustomer()
+    {
+        return new CustomerCreateDto
+        {
+            User = new UserDto
+            {
+                Role = "Customer"
+            },
+            Vehicles = new List<VehicleDto>()
+        };
+    }
+
+    public class CustomerCreateDto
+    {
+        public UserDto User { get; set; } = new();
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string Address { get; set; } = string.Empty;
+        public decimal CreditBalance { get; set; }
+        public List<VehicleDto> Vehicles { get; set; } = new();
+    }
+
+    public class CustomerHistoryResponse
+    {
+        public CustomerDto Customer { get; set; } = new();
+        public List<SalesInvoiceDto> SalesHistory { get; set; } = new();
+    }
+
+    public class CustomerDto
+    {
+        public int Id { get; set; }
+        public UserDto? User { get; set; }
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string Address { get; set; } = string.Empty;
+        public decimal CreditBalance { get; set; }
+        public List<VehicleDto>? Vehicles { get; set; }
+    }
+
+    public class UserDto
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PasswordHash { get; set; } = string.Empty;
+        public string Role { get; set; } = "Customer";
+    }
+
+    public class VehicleDto
+    {
+        public int Id { get; set; }
+        public string VehicleNumber { get; set; } = string.Empty;
+        public string Brand { get; set; } = string.Empty;
+        public string Model { get; set; } = string.Empty;
+        public int Year { get; set; }
+    }
+
+    public class SalesInvoiceDto
+    {
+        public int Id { get; set; }
+        public DateTime SaleDate { get; set; }
+        public decimal SubTotal { get; set; }
+        public decimal DiscountAmount { get; set; }
+        public decimal GrandTotal { get; set; }
+        public bool IsCredit { get; set; }
+        public bool IsPaid { get; set; }
+    }
+}
