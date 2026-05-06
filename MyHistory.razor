@@ -1,0 +1,135 @@
+@page "/my-history"
+
+@using System.Net.Http.Json
+@using VehicleParts.Client.Services
+@inject HttpClient Http
+@inject AuthState Auth
+@inject NavigationManager Nav
+
+<h3>My Purchase History</h3>
+
+@if (!Auth.IsLoggedIn || Auth.Role != "Customer")
+{
+    <div class="alert alert-danger">
+        Access denied. This page is only for customers.
+    </div>
+}
+else if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert alert-info">@message</div>
+}
+else if (history == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="card p-3 mb-4">
+        <h5>Customer Details</h5>
+        <p><strong>Name:</strong> @history.Customer.User?.FullName</p>
+        <p><strong>Phone:</strong> @history.Customer.PhoneNumber</p>
+        <p><strong>Address:</strong> @history.Customer.Address</p>
+        <p><strong>Credit Balance:</strong> Rs. @history.Customer.CreditBalance</p>
+    </div>
+
+    <h5>Sales / Purchase History</h5>
+
+    @if (history.SalesHistory == null || history.SalesHistory.Count == 0)
+    {
+        <div class="alert alert-warning">
+            No purchase history found.
+        </div>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Invoice ID</th>
+                    <th>Date</th>
+                    <th>Subtotal</th>
+                    <th>Discount</th>
+                    <th>Grand Total</th>
+                    <th>Credit</th>
+                    <th>Paid</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var invoice in history.SalesHistory)
+                {
+                    <tr>
+                        <td>@invoice.Id</td>
+                        <td>@invoice.SaleDate</td>
+                        <td>Rs. @invoice.SubTotal</td>
+                        <td>Rs. @invoice.DiscountAmount</td>
+                        <td>Rs. @invoice.GrandTotal</td>
+                        <td>@invoice.IsCredit</td>
+                        <td>@invoice.IsPaid</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private string message = string.Empty;
+    private CustomerHistoryResponse? history;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsLoggedIn || Auth.Role != "Customer")
+        {
+            return;
+        }
+
+        if (Auth.CustomerId == 0)
+        {
+            message = "Customer profile was not found for this login.";
+            return;
+        }
+
+        try
+        {
+            history = await Http.GetFromJsonAsync<CustomerHistoryResponse>(
+                $"api/customers/{Auth.CustomerId}/history"
+            );
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+    }
+
+    public class CustomerHistoryResponse
+    {
+        public CustomerDto Customer { get; set; } = new();
+        public List<SalesInvoiceDto> SalesHistory { get; set; } = new();
+    }
+
+    public class CustomerDto
+    {
+        public int Id { get; set; }
+        public UserDto? User { get; set; }
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string Address { get; set; } = string.Empty;
+        public decimal CreditBalance { get; set; }
+    }
+
+    public class UserDto
+    {
+        public string FullName { get; set; } = string.Empty;
+    }
+
+    public class SalesInvoiceDto
+    {
+        public int Id { get; set; }
+        public DateTime SaleDate { get; set; }
+        public decimal SubTotal { get; set; }
+        public decimal DiscountAmount { get; set; }
+        public decimal GrandTotal { get; set; }
+        public bool IsCredit { get; set; }
+        public bool IsPaid { get; set; }
+    }
+}
