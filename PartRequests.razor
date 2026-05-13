@@ -1,0 +1,217 @@
+@page "/part-requests"
+
+@using System.Net.Http.Json
+@using VehicleParts.Client.Services
+@inject HttpClient Http
+@inject AuthState Auth
+
+<h3>Unavailable Part Requests</h3>
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert alert-info">@message</div>
+}
+
+<div class="card p-3 mb-4">
+    <h5>Create Part Request</h5>
+
+    @if (Auth.Role != "Customer")
+    {
+        <div class="mb-2">
+            <label>Customer</label>
+            <select class="form-control" @bind="request.CustomerId">
+                <option value="0">-- Select Customer --</option>
+                @foreach (var customer in customers)
+                {
+                    <option value="@customer.Id">@customer.User?.FullName (@customer.PhoneNumber)</option>
+                }
+            </select>
+        </div>
+    }
+    else
+    {
+        <p><strong>Customer:</strong> @Auth.FullName</p>
+    }
+
+    <div class="mb-2">
+        <label>Requested Part Name</label>
+        <input class="form-control" @bind="request.RequestedPartName" />
+    </div>
+
+    <div class="mb-2">
+        <label>Vehicle Info</label>
+        <input class="form-control" @bind="request.VehicleInfo" />
+    </div>
+
+    <div class="mb-2">
+        <label>Description</label>
+        <textarea class="form-control" @bind="request.Description"></textarea>
+    </div>
+
+    <button class="btn btn-primary" @onclick="CreateRequest">
+        Submit Request
+    </button>
+</div>
+
+<h5>Request List</h5>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Customer ID</th>
+            <th>Requested Part</th>
+            <th>Vehicle Info</th>
+            <th>Description</th>
+            <th>Status</th>
+            <th>Requested At</th>
+
+            @if (Auth.Role == "Admin" || Auth.Role == "Staff")
+            {
+                <th>Action</th>
+            }
+        </tr>
+    </thead>
+
+    <tbody>
+        @foreach (var item in requests)
+        {
+            <tr>
+                <td>@item.Id</td>
+                <td>@item.CustomerId</td>
+                <td>@item.RequestedPartName</td>
+                <td>@item.VehicleInfo</td>
+                <td>@item.Description</td>
+                <td>@item.Status</td>
+                <td>@item.RequestedAt</td>
+
+                @if (Auth.Role == "Admin" || Auth.Role == "Staff")
+                {
+                    <td>
+                        <button class="btn btn-success btn-sm me-1"
+                                @onclick='() => UpdateStatus(item.Id, "Approved")'>
+                            Approve
+                        </button>
+
+                        <button class="btn btn-danger btn-sm"
+                                @onclick='() => UpdateStatus(item.Id, "Rejected")'>
+                            Reject
+                        </button>
+                    </td>
+                }
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private string message = string.Empty;
+
+    private PartRequestCreateDto request = new();
+    private List<CustomerDto> customers = new();
+    private List<PartRequestDto> requests = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        customers = await Http.GetFromJsonAsync<List<CustomerDto>>("api/customers") ?? new();
+
+        if (Auth.Role == "Customer")
+            request.CustomerId = Auth.CustomerId;
+
+        await ReloadRequests();
+    }
+
+    private async Task CreateRequest()
+    {
+        message = string.Empty;
+
+        if (Auth.Role == "Customer")
+            request.CustomerId = Auth.CustomerId;
+
+        if (request.CustomerId == 0)
+        {
+            message = "Please select a customer.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.RequestedPartName))
+        {
+            message = "Requested part name is required.";
+            return;
+        }
+
+        var response = await Http.PostAsJsonAsync("api/partrequests", request);
+
+        if (response.IsSuccessStatusCode)
+        {
+            message = "Part request submitted successfully.";
+            await ReloadRequests();
+
+            request = new PartRequestCreateDto
+            {
+                CustomerId = Auth.Role == "Customer" ? Auth.CustomerId : 0
+            };
+        }
+        else
+        {
+            message = await response.Content.ReadAsStringAsync();
+        }
+    }
+
+    private async Task UpdateStatus(int id, string status)
+    {
+        var response = await Http.PutAsync(
+            $"api/partrequests/{id}/status?status={status}",
+            null);
+
+        if (response.IsSuccessStatusCode)
+        {
+            message = $"Part request {status.ToLower()} successfully.";
+            await ReloadRequests();
+        }
+        else
+        {
+            message = await response.Content.ReadAsStringAsync();
+        }
+    }
+
+    private async Task ReloadRequests()
+    {
+        var allRequests = await Http.GetFromJsonAsync<List<PartRequestDto>>("api/partrequests") ?? new();
+
+        requests = Auth.Role == "Customer"
+            ? allRequests.Where(r => r.CustomerId == Auth.CustomerId).ToList()
+            : allRequests;
+    }
+
+    public class PartRequestCreateDto
+    {
+        public int CustomerId { get; set; }
+        public string RequestedPartName { get; set; } = string.Empty;
+        public string VehicleInfo { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+    }
+
+    public class PartRequestDto
+    {
+        public int Id { get; set; }
+        public int CustomerId { get; set; }
+        public string RequestedPartName { get; set; } = string.Empty;
+        public string VehicleInfo { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime RequestedAt { get; set; }
+    }
+
+    public class CustomerDto
+    {
+        public int Id { get; set; }
+        public UserDto? User { get; set; }
+        public string PhoneNumber { get; set; } = string.Empty;
+    }
+
+    public class UserDto
+    {
+        public string FullName { get; set; } = string.Empty;
+    }
+}
