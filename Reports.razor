@@ -1,0 +1,165 @@
+@page "/reports"
+
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<h3>Reports Dashboard</h3>
+
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert alert-danger">@message</div>
+}
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h5>Daily Sales</h5>
+            <p><strong>Invoices:</strong> @daily?.TotalInvoices</p>
+            <p><strong>Total Sales:</strong> Rs. @daily?.TotalSalesAmount</p>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h5>Monthly Sales</h5>
+            <p><strong>Month:</strong> @monthly?.Month / @monthly?.Year</p>
+            <p><strong>Invoices:</strong> @monthly?.TotalInvoices</p>
+            <p><strong>Total Sales:</strong> Rs. @monthly?.TotalSalesAmount</p>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h5>Yearly Sales</h5>
+            <p><strong>Year:</strong> @yearly?.Year</p>
+            <p><strong>Invoices:</strong> @yearly?.TotalInvoices</p>
+            <p><strong>Total Sales:</strong> Rs. @yearly?.TotalSalesAmount</p>
+        </div>
+    </div>
+</div>
+
+<h4>Top Spenders</h4>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Customer ID</th>
+            <th>Customer Name</th>
+            <th>Total Spent</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in topSpenders)
+        {
+            <tr>
+                <td>@item.CustomerId</td>
+                <td>@item.CustomerName</td>
+                <td>Rs. @item.TotalSpent</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h4>Regular Customers</h4>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Customer ID</th>
+            <th>Customer Name</th>
+            <th>Total Purchases</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in regularCustomers)
+        {
+            <tr>
+                <td>@item.CustomerId</td>
+                <td>@item.CustomerName</td>
+                <td>@item.TotalPurchases</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h4>Credit Customers</h4>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Customer ID</th>
+            <th>Customer Name</th>
+            <th>Credit Balance</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in creditCustomers)
+        {
+            <tr>
+                <td>@item.CustomerId</td>
+                <td>@item.CustomerName</td>
+                <td>Rs. @item.CreditBalance</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private string message = string.Empty;
+
+    private FinancialReportDto? daily;
+    private FinancialReportDto? monthly;
+    private FinancialReportDto? yearly;
+
+    private List<TopSpenderDto> topSpenders = new();
+    private List<RegularCustomerDto> regularCustomers = new();
+    private List<CreditCustomerDto> creditCustomers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            daily = await Http.GetFromJsonAsync<FinancialReportDto>("api/reports/daily");
+            monthly = await Http.GetFromJsonAsync<FinancialReportDto>("api/reports/monthly");
+            yearly = await Http.GetFromJsonAsync<FinancialReportDto>("api/reports/yearly");
+
+            topSpenders = await Http.GetFromJsonAsync<List<TopSpenderDto>>("api/customers/report/top-spenders") ?? new();
+            regularCustomers = await Http.GetFromJsonAsync<List<RegularCustomerDto>>("api/customers/report/regular") ?? new();
+            creditCustomers = await Http.GetFromJsonAsync<List<CreditCustomerDto>>("api/customers/report/credit") ?? new();
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+    }
+
+    public class FinancialReportDto
+    {
+        public DateTime Date { get; set; }
+        public int Month { get; set; }
+        public int Year { get; set; }
+        public int TotalInvoices { get; set; }
+        public decimal TotalSalesAmount { get; set; }
+    }
+
+    public class TopSpenderDto
+    {
+        public int CustomerId { get; set; }
+        public string CustomerName { get; set; } = string.Empty;
+        public decimal TotalSpent { get; set; }
+    }
+
+    public class RegularCustomerDto
+    {
+        public int CustomerId { get; set; }
+        public string CustomerName { get; set; } = string.Empty;
+        public int TotalPurchases { get; set; }
+    }
+
+    public class CreditCustomerDto
+    {
+        public int CustomerId { get; set; }
+        public string CustomerName { get; set; } = string.Empty;
+        public decimal CreditBalance { get; set; }
+    }
+}
